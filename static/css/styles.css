@@ -1,0 +1,71 @@
+/* Ensures the body takes up the entire space and uses a flexbox layout */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    display: flex;
+}
+
+/* Styles the sidebar, giving it a width, padding, and shadow */
+#sidebar {
+    width: 25%;
+    padding: 20px;
+    box-shadow: 2px 0px 5px rgba(0, 0, 0, 0.1);
+    background-color: #f8f9fa;
+    box-sizing: border-box;
+}
+
+/* Ensures the map takes up the rest of the space */
+#map {
+    width: 75%;
+    height: 100vh;
+}
+
+/* Ensures the heading has no top margin */
+h3 {
+    margin-top: 0;
+}
+
+/* Provides consistent bottom margin for each select container */
+.select-container {
+    margin-bottom: 20px;
+}
+
+/* Styles the labels to be block elements with a bold font */
+.select-container label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+/* Ensures select boxes and radio inputs are block elements with padding */
+.select-container select,
+.select-container input {
+    display: block;
+    width: 100%;
+    padding: 5px;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+
+/* Styles the button to take up the full width and have a consistent padding and background color */
+button {
+    width: 100%;
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 5px;
+}
+
+/* Styles the button's hover state */
+button:hover {
+    background-color: #0056b3;
+}
+
+/* Removes bottom margin from the last select container to avoid extra space */
+#end-date-container {
+    margin-bottom: 0;
+}

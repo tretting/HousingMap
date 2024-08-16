@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Housing Metric Mapping</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        #map {
+            width: 80%;
+            height: 600px;
+            float: right;
+        }
+        #sidebar {
+            width: 20%;
+            float: left;
+        }
+        .radio-container {
+            display: inline-block;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h3>Select Data Display</h3>
+        <div class="radio-container">
+            <div id="change-container" class="select-container">
+                <input type="radio" id="change" name="data_type" value="change" checked>
+                <label for="change">Change</label>
+            </div>
+
+            <div id="snapshot-container" class="select-container">
+                <input type="radio" id="snapshot" name="data_type" value="snapshot">
+                <label for="snapshot">Snapshot</label>
+            </div>
+        </div>
+
+        <div id="change-type-container" class="select-container" style="display:inline-block;">
+            <input type="radio" id="total" name="change_type" value="total" checked>
+            <label for="total">Total Change</label><br>
+            <input type="radio" id="percent" name="change_type" value="percent">
+            <label for="percent">Percent Change</label>
+        </div><br><br>
+
+        <div id="metric-container" class="select-container">
+            <label for="metric">Select Metric: </label>
+            <select id="metric" name="metric"></select>
+        </div><br>
+
+        <div class="date-container">
+            <div id="start-date-container" class="select-container" style="display:inline-block;">
+                <label for="date1">Start date: </label>
+                <select id="date1" name="date1"></select>
+            </div>
+    
+            <div id="end-date-container" class="select-container" style="display:inline-block; margin-left: 10px;">
+                <label for="date2">End date: </label>
+                <select id="date2" name="date2"></select>
+            </div>
+        </div><br>
+
+        <button onclick="updateMap()">Update Map</button>
+    </div>
+    <div id="map"></div>
+
+    <script>
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const annual_start_year = 2011;
+    const annual_end_year = 2021;
+    const monthly_start_year = 2000;
+    const monthly_end_year = 2023;
+    let currentMetrics = null;
+
+    function populateMetrics(metrics) {
+        currentMetrics = metrics; // Store metrics globally
+        const metricSelect = document.getElementById('metric');
+        metricSelect.innerHTML = '';
+
+        const annualGroup = document.createElement('optgroup');
+        annualGroup.label = 'Annual Metrics';
+
+        metrics.annual.forEach(metric => {
+            const option = document.createElement('option');
+            option.value = metric;
+            option.text = metric;
+            annualGroup.appendChild(option);
+        });
+
+        const monthlyGroup = document.createElement('optgroup');
+        monthlyGroup.label = 'Monthly Metrics';
+
+        metrics.monthly.forEach(metric => {
+            const option = document.createElement('option');
+            option.value = metric;
+            option.text = metric;
+            monthlyGroup.appendChild(option);
+        });
+
+        metricSelect.appendChild(annualGroup);
+        metricSelect.appendChild(monthlyGroup);
+
+        metricSelect.addEventListener('change', function () {
+            const selectedMetric = this.value;
+            const dateType = metrics.annual.includes(selectedMetric) ? 'annual' : 'monthly';
+            const startDateElement = document.getElementById('date1');
+            const endDateElement = document.getElementById('date2');
+            
+            const previousStartDate = startDateElement.value;
+            const previousEndDate = endDateElement.value;
+
+            populateDates(startDateElement, dateType);
+            populateDates(endDateElement, dateType);
+
+            // Preserve previously selected dates if valid
+            if (previousStartDate) {
+                startDateElement.value = previousStartDate;
+            }
+            if (previousEndDate) {
+                endDateElement.value = previousEndDate;
+            }
+
+            startDateElement.disabled = false;
+            endDateElement.disabled = false;
+        });
+    }
+
+    function populateDates(selectElement, dateType) {
+        selectElement.innerHTML = '';
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.text = '';
+        selectElement.appendChild(defaultOption);
+
+        if (dateType === 'annual') {
+            for (let year = annual_start_year; year <= annual_end_year; year++) {
+                const option = document.createElement('option');
+                option.value = year;
+                option.text = year;
+                selectElement.appendChild(option);
+            }
+        } else {
+            for (let year = monthly_start_year; year <= monthly_end_year; year++) {
+                for (let month = 1; month <= 12; month++) {
+                    const option = document.createElement('option');
+                    option.value = `${year}-${month.toString().padStart(2, '0')}`;
+                    option.text = `${months[month - 1]} ${year}`;
+                    selectElement.appendChild(option);
+                }
+            }
+        }
+    }
+
+    function updateMap() {
+        const metric = document.getElementById('metric').value;
+        const dataType = document.querySelector('input[name="data_type"]:checked').value;
+        const date1 = document.getElementById('date1').value;
+        const date2 = dataType === 'change' ? document.getElementById('date2').value : null;
+        const changeType = document.querySelector('input[name="change_type"]:checked').value;
+        const dateType = currentMetrics.annual.includes(metric) ? 'annual' : 'monthly';
+
+        fetch('/update_data', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ metric: metric, data_type: dataType, date_type: dateType, start_date: date1, end_date: date2, change_type: changeType })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log("Received data from /update_data:", data);  // Add this line for debugging
+                const traces = [];
+                const zipCodeData = {};
+
+                data.forEach(item => {
+                    zipCodeData[item['RegionName']] = item[metric];
+                });
+
+                fetch('/data')
+                    .then(response => response.json())
+                    .then(shapeData => {
+                        console.log("Received shape data:", shapeData);  // Add this line for debugging
+                        const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
+                        const minValue = Math.min(...values);
+                        const maxValue = Math.max(...values);
+
+                        function getColor(value) {
+                            if (value === undefined) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
+                            const normalizedValue = (value - minValue) / (maxValue - minValue);
+                            const r = Math.floor(255 * normalizedValue);
+                            const g = 255;
+                            const b = Math.floor(255 * (1 - normalizedValue));
+                            return `rgba(${r}, ${g}, ${b}, 0.7)`;
+                        }
+
+                        shapeData.features.forEach(feature => {
+                            const coordinates = feature.geometry.coordinates;
+                            const lat = [];
+                            const lon = [];
+
+                            function processCoordinates(coords) {
+                                if (Array.isArray(coords[0])) {
+                                    coords.forEach(innerCoord => {
+                                        processCoordinates(innerCoord);
+                                    });
+                                } else {
+                                    lon.push(coords[0]);
+                                    lat.push(coords[1]);
+                                }
+                            }
+
+                            coordinates.forEach(coord => {
+                                processCoordinates(coord);
+                            });
+
+                            const zipCode = feature.properties.GEOID20;
+                            const value = zipCodeData[zipCode];
+                            const color = getColor(value);
+
+                            traces.push({
+                                type: 'scattermapbox',
+                                lat: lat,
+                                lon: lon,
+                                mode: 'lines',
+                                fill: 'toself',
+                                fillcolor: color,
+                                line: {
+                                    width: 2,
+                                    color: 'gray'
+                                },
+                                hoverinfo: 'none'
+                            });
+
+                            const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
+                            const centroid_lon = parseFloat(feature.properties.INTPTLON20);
+                            let displayValue = '';
+
+                            if (value !== undefined) {
+                                displayValue = changeType === 'percent' && dataType === 'change' ? `${value.toFixed(1)}%` : value.toFixed(0);
+                            }
+
+                            const text_label = `Zipcode: ${zipCode}<br>${metric} change: ${displayValue}`;
+
+                            traces.push({
+                                type: 'scattermapbox',
+                                lat: [centroid_lat],
+                                lon: [centroid_lon],
+                                mode: 'markers',
+                                marker: {
+                                    size: 5,
+                                    color: 'black'
+                                },
+                                hoverinfo: 'none'
+                            });
+
+                            if (value !== undefined) {
+                                traces.push({
+                                    type: 'scattermapbox',
+                                    lat: [centroid_lat],
+                                    lon: [centroid_lon],
+                                    mode: 'markers+text',
+                                    text: text_label,
+                                    marker: {
+                                        size: 0,
+                                        color: color
+                                    },
+                                    textfont: {
+                                        size: 14,
+                                        color: 'black'
+                                    },
+                                    hoverinfo: 'text'
+                                });
+                            }
+                        });
+
+                        const layout = {
+                            mapbox: {
+                                style: "carto-positron",
+                                center: {
+                                    lat: 38.8339,
+                                    lon: -104.8214
+                                },
+                                zoom: 9.5
+                            },
+                            title: 'ZIP Code Data (Colorado Springs)',
+                            height: 900,
+                            margin: {
+                                l: 0,
+                                r: 0,
+                                t: 50,
+                                b: 0
+                            },
+                            showlegend: false
+                        };
+
+                        Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
+                    })
+                    .catch(error => console.error("Error loading shape data:", error));
+            })
+            .catch(error => console.error("Error updating map data:", error));
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        fetch('/metrics')
+            .then(response => response.json())
+            .then(metrics => {
+                populateMetrics(metrics);
+
+                // Initial state: disable date selectors
+                document.getElementById('date1').disabled = true;
+                document.getElementById('date2').disabled = true;
+
+                // Ensure that the "change" option shows two date selectors on load
+                document.getElementById('change').checked = true;
+                document.getElementById('end-date-container').style.display = 'inline-block';
+                document.getElementById('change-type-container').style.display = 'inline-block';
+            });
+
+        document.querySelectorAll('input[name="data_type"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                const endDateContainer = document.getElementById('end-date-container');
+                const changeTypeContainer = document.getElementById('change-type-container');
+                if (this.value === 'change') {
+                    endDateContainer.style.display = 'inline-block';
+                    changeTypeContainer.style.display = 'inline-block';
+                    document.getElementById('percent').disabled = false;
+                } else {
+                    endDateContainer.style.display = 'none';
+                    changeTypeContainer.style.display = 'none';
+                    document.getElementById('percent').disabled = true;
+                    document.getElementById('total').checked = true;
+                }
+            });
+        });
+
+        // Load initial map with ZIP code outlines in gray
+        fetch('/data')
+            .then(response => response.json())
+            .then(data => {
+                const features = data.features;
+                const traces = [];
+
+                features.forEach(feature => {
+                    const coordinates = feature.geometry.coordinates;
+                    const lat = [];
+                    const lon = [];
+
+                    function processCoordinates(coords) {
+                        if (Array.isArray(coords[0])) {
+                            coords.forEach(innerCoord => {
+                                processCoordinates(innerCoord);
+                            });
+                        } else {
+                            lon.push(coords[0]);
+                            lat.push(coords[1]);
+                        }
+                    }
+
+                    coordinates.forEach(coord => {
+                        processCoordinates(coord);
+                    });
+
+                    traces.push({
+                        type: 'scattermapbox',
+                        lat: lat,
+                        lon: lon,
+                        mode: 'lines',
+                        line: {
+                            width: 2,
+                            color: 'gray'
+                        },
+                        hoverinfo: 'none'
+                    });
+                });
+
+                const layout = {
+                    mapbox: {
+                        style: "carto-positron",
+                        center: {
+                            lat: 38.8339,
+                            lon: -104.8214
+                        },
+                        zoom: 9.5
+                    },
+                    title: 'ZIP Code Outlines (Colorado Springs)',
+                    height: 900,
+                    margin: {
+                        l: 0,
+                        r: 0,
+                        t: 50,
+                        b: 0
+                    },
+                    showlegend: false
+                };
+
+                Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
+            })
+            .catch(error => console.error("Error loading data:", error));
+    });
+    </script>
+</body>
+</html>
