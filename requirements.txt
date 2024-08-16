@@ -3,5 +3,4 @@ pandas
 plotly
 geopandas
 shapely
-json
 gunicorn
