@@ -1,71 +1,142 @@
-/* Ensures the body takes up the entire space and uses a flexbox layout */
+/* Overall page settings */
 body {
-    font-family: Arial, sans-serif;
+    font-family: 'Arial', sans-serif;
     margin: 0;
     padding: 0;
     display: flex;
-}
-
-/* Styles the sidebar, giving it a width, padding, and shadow */
-#sidebar {
-    width: 25%;
-    padding: 20px;
-    box-shadow: 2px 0px 5px rgba(0, 0, 0, 0.1);
-    background-color: #f8f9fa;
-    box-sizing: border-box;
-}
-
-/* Ensures the map takes up the rest of the space */
-#map {
-    width: 75%;
+    background-color: #2c3e50;
+    color: #ecf0f1;
     height: 100vh;
+    overflow: hidden;
 }
 
-/* Ensures the heading has no top margin */
+/* Sidebar styling */
+#sidebar {
+    width: 18%;
+    padding: 30px;
+    box-shadow: 2px 0px 10px rgba(0, 0, 0, 0.15);
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    box-sizing: border-box;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+/* Sidebar title styling */
+h2 {
+    margin-top: 0;
+    color: #ecf0f1;
+    font-weight: 500;
+    letter-spacing: 1px;
+    font-size: 22px;
+    background-color: #34495e;
+    padding: 10px;
+    text-align: center;
+}
+
+/* Sidebar header styling */
 h3 {
     margin-top: 0;
+    color: #ecf0f1;
+    font-weight: 500;
+    letter-spacing: 1px;
+    font-size: 18px;
+    background-color: #34495e;
+    padding: 10px;
+    text-align: center;
 }
 
-/* Provides consistent bottom margin for each select container */
+/* Container styling for each select/input element */
 .select-container {
     margin-bottom: 20px;
+    background-color: #3b4a59;
+    padding: 10px;
+    border-radius: 5px;
 }
 
-/* Styles the labels to be block elements with a bold font */
+/* Label styling */
 .select-container label {
     display: block;
     margin-bottom: 5px;
     font-weight: bold;
+    color: #bdc3c7;
 }
 
-/* Ensures select boxes and radio inputs are block elements with padding */
+/* Dropdown and input styling */
 .select-container select,
-.select-container input {
-    display: block;
-    width: 100%;
-    padding: 5px;
+.select-container input[type="radio"] {
+    padding: 8px;
+    border-radius: 5px;
+    border: none;
+    background-color: #34495e;
+    color: #ecf0f1;
     box-sizing: border-box;
-    margin-bottom: 10px;
+    font-size: 13px;
 }
 
-/* Styles the button to take up the full width and have a consistent padding and background color */
-button {
-    width: 100%;
-    padding: 10px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    cursor: pointer;
-    font-size: 16px;
+/* Radio input styling - ensures radio buttons are aligned with labels */
+.radio-container {
+    display: flex;
+    align-items: normal; /* Vertically centers the radio buttons and labels */
+    margin-bottom: 3px;
+    padding: 5px;
+    background-color: #3b4a59;
     border-radius: 5px;
 }
 
-/* Styles the button's hover state */
-button:hover {
-    background-color: #0056b3;
+.radio-container input[type="radio"] {
+    margin-right: 10px;
+    vertical-align: middle; /* Ensures the radio button is vertically aligned */
 }
 
-/* Removes bottom margin from the last select container to avoid extra space */
+.radio-container label {
+    margin: 0; /* Removes any margin that might misalign the label */
+    line-height: 1; /* Ensures consistent line height for the label */
+}
+
+/* Button styling */
+button {
+    width: 100%;
+    padding: 12px;
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+/* Button hover effect */
+button:hover {
+    background-color: #c0392b;
+}
+
+/* Map container styling */
+#map {
+    width: 82%;
+    height: 100vh;
+    float: right;
+}
+
+/* Date container styling */
+.date-container {
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Styling for individual date pickers */
+#start-date-container,
 #end-date-container {
-    margin-bottom: 0;
+    width: 48%;
+    white-space: nowrap;
+}
+
+/* Footer or potential additional styling adjustments */
+footer {
+    width: 100%;
+    padding: 20px;
+    text-align: center;
+    background-color: #2c3e50;
+    color: #ecf0f1;
 }

@@ -3,43 +3,32 @@
 <head>
     <title>Housing Metric Mapping</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-    <style>
-        #map {
-            width: 80%;
-            height: 600px;
-            float: right;
-        }
-        #sidebar {
-            width: 20%;
-            float: left;
-        }
-        .radio-container {
-            display: inline-block;
-            margin-right: 10px;
-        }
-    </style>
+    <link rel="stylesheet" type="text/css" href="/static/css/styles.css">
 </head>
 <body>
     <div id="sidebar">
-        <h3>Select Data Display</h3>
-        <div class="radio-container">
-            <div id="change-container" class="select-container">
+        <h2>Colorado Springs Housing Metrics</h2><br>
+        <h3>Select Data</h3>
+        <div class="select-container">
+            <div class="radio-container">
                 <input type="radio" id="change" name="data_type" value="change" checked>
                 <label for="change">Change</label>
             </div>
-
-            <div id="snapshot-container" class="select-container">
+            <div class="radio-container">
                 <input type="radio" id="snapshot" name="data_type" value="snapshot">
                 <label for="snapshot">Snapshot</label>
             </div>
         </div>
-
-        <div id="change-type-container" class="select-container" style="display:inline-block;">
-            <input type="radio" id="total" name="change_type" value="total" checked>
-            <label for="total">Total Change</label><br>
-            <input type="radio" id="percent" name="change_type" value="percent">
-            <label for="percent">Percent Change</label>
-        </div><br><br>
+        <div class="select-container">
+            <div class="radio-container">
+                <input type="radio" id="total" name="change_type" value="total" checked>
+                <label for="total">Total Change</label>
+            </div>
+            <div class="radio-container">
+                <input type="radio" id="percent" name="change_type" value="percent">
+                <label for="percent">Percent Change</label>
+            </div>
+        </div>
 
         <div id="metric-container" class="select-container">
             <label for="metric">Select Metric: </label>
@@ -280,12 +269,11 @@
                                 },
                                 zoom: 9.5
                             },
-                            title: 'ZIP Code Data (Colorado Springs)',
-                            height: 900,
+                            height: 1000, // Increased height to ensure it fills the space
                             margin: {
                                 l: 0,
                                 r: 0,
-                                t: 50,
+                                t: 0,  // Set top margin to 0 to remove space for the title
                                 b: 0
                             },
                             showlegend: false
@@ -372,24 +360,23 @@
                 });
 
                 const layout = {
-                    mapbox: {
-                        style: "carto-positron",
-                        center: {
-                            lat: 38.8339,
-                            lon: -104.8214
-                        },
-                        zoom: 9.5
-                    },
-                    title: 'ZIP Code Outlines (Colorado Springs)',
-                    height: 900,
-                    margin: {
-                        l: 0,
-                        r: 0,
-                        t: 50,
-                        b: 0
-                    },
-                    showlegend: false
-                };
+                            mapbox: {
+                                style: "carto-positron",
+                                center: {
+                                    lat: 38.8339,
+                                    lon: -104.8214
+                                },
+                                zoom: 9.5
+                            },
+                            height: 1000, // Increased height to ensure it fills the space
+                            margin: {
+                                l: 0,
+                                r: 0,
+                                t: 0,  // Set top margin to 0 to remove space for the title
+                                b: 0
+                            },
+                            showlegend: false
+                        };
 
                 Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
             })
