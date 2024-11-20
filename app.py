@@ -1,5 +1,6 @@
 from flask import Flask, render_template, jsonify, request, send_from_directory
 import pandas as pd
+import numpy as np
 import geopandas as gpd
 import json
 
@@ -11,6 +12,25 @@ COS_shape_data = gpd.read_file("data/processed/COS_shape_data.geojson")
 # Load processed statewide data
 annual_data = pd.read_csv("data/processed/annual_data.csv")
 monthly_data = pd.read_csv("data/processed/monthly_data.csv")
+
+# Load pre-aggregated data
+plat_coverage = pd.read_csv('data/processed/plat_coverage.csv')
+zipcode_coverage = pd.read_csv('data/processed/zipcode_coverage.csv')
+
+# List of ZIP codes for Colorado Springs
+COS_zips = ["80901", "80902", "80903", "80904", "80905", "80906", "80907", "80908", "80909", "80910",
+            "80911", "80912", "80913", "80914", "80915", "80916", "80917", "80918", "80919", "80920",
+            "80921", "80922", "80923", "80924", "80925", "80926", "80927", "80928", "80929", "80930",
+            "80931", "80932", "80933", "80934", "80935", "80936", "80937", "80938", "80939", "80941",
+            "80942", "80943", "80944", "80945", "80946", "80947", "80949", "80950", "80951", "80960",
+            "80962", "80970", "80977", "80995", "80997"]
+
+# Ensure ZIPCODE is a string with leading zeros
+zipcode_coverage = zipcode_coverage.dropna(subset=['ZIPCODE']).reset_index(drop=True)
+zipcode_coverage['ZIPCODE'] = zipcode_coverage['ZIPCODE'].astype(int).astype(str).str.zfill(5)
+
+# Filter to include only Colorado Springs ZIP codes
+zipcode_coverage = zipcode_coverage[zipcode_coverage['ZIPCODE'].isin(COS_zips)].reset_index(drop=True)
 
 @app.route('/')
 def index():
@@ -26,7 +46,12 @@ def data():
 def metrics():
     annual_metrics = annual_data.columns[2:].tolist()  # Exclude ZIP Code and Year columns
     monthly_metrics = monthly_data.columns[2:].tolist()  # Exclude ZIP Code and Date columns
-    return jsonify({'annual': annual_metrics, 'monthly': monthly_metrics})
+    custom_metrics = ['LotCoverage']  # Add your custom metric(s)
+    return jsonify({'annual': annual_metrics, 'monthly': monthly_metrics, 'custom': custom_metrics})
+
+@app.route('/lot_coverage_zipcode')
+def lot_coverage_zipcode():
+    return jsonify(zipcode_coverage.to_dict(orient='records'))
 
 @app.route('/update_data', methods=['POST'])
 def update_data():

@@ -2,7 +2,11 @@
 <html>
 <head>
     <title>Housing Metric Mapping</title>
+    <!-- Include Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <!-- Include chroma.js for color gradients -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.0/chroma.min.js"></script>
+    <!-- Include your CSS file -->
     <link rel="stylesheet" type="text/css" href="/static/css/styles.css">
 </head>
 <body>
@@ -19,7 +23,7 @@
                 <label for="snapshot">Snapshot</label>
             </div>
         </div>
-        <div class="select-container">
+        <div class="select-container" id="change-type-container">
             <div class="radio-container">
                 <input type="radio" id="total" name="change_type" value="total" checked>
                 <label for="total">Total Change</label>
@@ -48,10 +52,20 @@
         </div><br>
 
         <button onclick="updateMap()">Update Map</button>
+
+        <div class="info-container">
+            <p>
+                Use this tool to view housing-related or demographic-related info in Colorado Springs. Where you see 'ZVHI' in the selection field, this indicates data pulled from Zillow's Home Value Index at the zipcode level, unless you see the suffix 'CL' for city-level. The tags 'sfr' or '2br' stand for 'single-family residence' and 'two bedroom', etc. The 'annual' and 'monthly' sections denote the fields for which the data is available annually or monthly. Gray areas indicate no data points for the zipcode. Lot coverage gives the average percentage of a lot in that zipcode covered by garage square footage plus first-floor square footage. Dollar values are inflation-adjusted to 2021 USD.
+                <br><br>
+                This data is not guaranteed to be correct or up to date, it is merely for exploratory purposes. Be sure to consult both the city government's and county assessor's tools and official/legal records. If the app becomes unresponsive, please reload the page.
+            </p>
+        </div>
+
     </div>
     <div id="map"></div>
 
     <script>
+    // Global variables
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const annual_start_year = 2011;
     const annual_end_year = 2021;
@@ -59,7 +73,9 @@
     const monthly_end_year = 2023;
     let currentMetrics = null;
 
+    // Functions moved to global scope
     function populateMetrics(metrics) {
+        console.log("Metrics received from server:", metrics); // Debugging
         currentMetrics = metrics; // Store metrics globally
         const metricSelect = document.getElementById('metric');
         metricSelect.innerHTML = '';
@@ -84,31 +100,26 @@
             monthlyGroup.appendChild(option);
         });
 
+        // Add custom metrics if any
+        if (metrics.custom && metrics.custom.length > 0) {
+            const customGroup = document.createElement('optgroup');
+            customGroup.label = 'Custom Metrics';
+
+            metrics.custom.forEach(metric => {
+                const option = document.createElement('option');
+                option.value = metric;
+                option.text = metric;
+                customGroup.appendChild(option);
+            });
+
+            metricSelect.appendChild(customGroup);
+        }
+
         metricSelect.appendChild(annualGroup);
         metricSelect.appendChild(monthlyGroup);
 
         metricSelect.addEventListener('change', function () {
-            const selectedMetric = this.value;
-            const dateType = metrics.annual.includes(selectedMetric) ? 'annual' : 'monthly';
-            const startDateElement = document.getElementById('date1');
-            const endDateElement = document.getElementById('date2');
-            
-            const previousStartDate = startDateElement.value;
-            const previousEndDate = endDateElement.value;
-
-            populateDates(startDateElement, dateType);
-            populateDates(endDateElement, dateType);
-
-            // Preserve previously selected dates if valid
-            if (previousStartDate) {
-                startDateElement.value = previousStartDate;
-            }
-            if (previousEndDate) {
-                endDateElement.value = previousEndDate;
-            }
-
-            startDateElement.disabled = false;
-            endDateElement.disabled = false;
+            handleMetricChange(this.value);
         });
     }
 
@@ -126,7 +137,7 @@
                 option.text = year;
                 selectElement.appendChild(option);
             }
-        } else {
+        } else if (dateType === 'monthly') {
             for (let year = monthly_start_year; year <= monthly_end_year; year++) {
                 for (let month = 1; month <= 12; month++) {
                     const option = document.createElement('option');
@@ -138,186 +149,359 @@
         }
     }
 
+    function handleMetricChange(selectedMetric) {
+        console.log("Selected Metric:", selectedMetric);
+        console.log("Current Metrics:", currentMetrics);
+
+        const dateType = currentMetrics.annual.includes(selectedMetric) ? 'annual' :
+                        currentMetrics.monthly.includes(selectedMetric) ? 'monthly' : 'custom';
+        console.log("Determined Date Type:", dateType);
+
+        const startDateElement = document.getElementById('date1');
+        const endDateElement = document.getElementById('date2');
+
+        if (dateType === 'custom') {
+            // Hide date selectors for custom metrics
+            startDateElement.disabled = true;
+            endDateElement.disabled = true;
+            document.getElementById('start-date-container').style.display = 'none';
+            document.getElementById('end-date-container').style.display = 'none';
+            document.getElementById('change-type-container').style.display = 'none';
+        } else {
+            // Show date selectors for standard metrics
+            document.getElementById('start-date-container').style.display = 'inline-block';
+            document.getElementById('change-type-container').style.display = 'inline-block';
+
+            if (document.querySelector('input[name="data_type"]:checked').value === 'change') {
+                document.getElementById('end-date-container').style.display = 'inline-block';
+            } else {
+                document.getElementById('end-date-container').style.display = 'none';
+            }
+
+            // Clear and repopulate date selectors
+            populateDates(startDateElement, dateType);
+            populateDates(endDateElement, dateType);
+
+            startDateElement.disabled = false;
+            endDateElement.disabled = false;
+        }
+    }
+
     function updateMap() {
+        console.log("updateMap function called");
         const metric = document.getElementById('metric').value;
-        const dataType = document.querySelector('input[name="data_type"]:checked').value;
-        const date1 = document.getElementById('date1').value;
-        const date2 = dataType === 'change' ? document.getElementById('date2').value : null;
-        const changeType = document.querySelector('input[name="change_type"]:checked').value;
-        const dateType = currentMetrics.annual.includes(metric) ? 'annual' : 'monthly';
+        const isCustomMetric = currentMetrics.custom && currentMetrics.custom.includes(metric);
 
-        fetch('/update_data', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ metric: metric, data_type: dataType, date_type: dateType, start_date: date1, end_date: date2, change_type: changeType })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log("Received data from /update_data:", data);  // Add this line for debugging
-                const traces = [];
-                const zipCodeData = {};
-
-                data.forEach(item => {
-                    zipCodeData[item['RegionName']] = item[metric];
-                });
-
-                fetch('/data')
+        if (isCustomMetric) {
+            // Handle custom metrics like LotCoverage
+            if (metric === 'LotCoverage') {
+                fetch('/lot_coverage_zipcode')
                     .then(response => response.json())
-                    .then(shapeData => {
-                        console.log("Received shape data:", shapeData);  // Add this line for debugging
-                        const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
-                        const minValue = Math.min(...values);
-                        const maxValue = Math.max(...values);
+                    .then(data => {
+                        displayLotCoverageData(data);
+                    })
+                    .catch(error => console.error("Error fetching lot coverage data:", error));
+            }
+        } else {
+            // Existing code for other metrics
+            const dataType = document.querySelector('input[name="data_type"]:checked').value;
+            const date1 = document.getElementById('date1').value;
+            const date2 = dataType === 'change' ? document.getElementById('date2').value : null;
+            const changeType = document.querySelector('input[name="change_type"]:checked').value;
+            const dateType = currentMetrics.annual.includes(metric) ? 'annual' : 'monthly';
 
-                        function getColor(value) {
-                            if (value === undefined) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
-                            const normalizedValue = (value - minValue) / (maxValue - minValue);
-                            const r = Math.floor(255 * normalizedValue);
-                            const g = 255;
-                            const b = Math.floor(255 * (1 - normalizedValue));
-                            return `rgba(${r}, ${g}, ${b}, 0.7)`;
-                        }
+            fetch('/update_data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ metric: metric, data_type: dataType, date_type: dateType, start_date: date1, end_date: date2, change_type: changeType })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log("Received data from /update_data:", data);  // Debugging
+                    const traces = [];
+                    const zipCodeData = {};
 
-                        shapeData.features.forEach(feature => {
-                            const coordinates = feature.geometry.coordinates;
-                            const lat = [];
-                            const lon = [];
+                    data.forEach(item => {
+                        zipCodeData[item['RegionName']] = item[metric];
+                    });
 
-                            function processCoordinates(coords) {
-                                if (Array.isArray(coords[0])) {
-                                    coords.forEach(innerCoord => {
-                                        processCoordinates(innerCoord);
-                                    });
-                                } else {
-                                    lon.push(coords[0]);
-                                    lat.push(coords[1]);
+                    fetch('/data')
+                        .then(response => response.json())
+                        .then(shapeData => {
+                            console.log("Received shape data:", shapeData);  // Debugging
+                            const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
+                            const minValue = Math.min(...values);
+                            const maxValue = Math.max(...values);
+
+                            function getColor(value) {
+                                if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
+                                
+                                const normalizedValue = (value - minValue) / (maxValue - minValue);
+                                
+                                // Use chroma.js to create a color scale from blue to red
+                                const colorScale = chroma.scale(['cyan', 'yellow']).domain([0, 1]);
+                                const color = colorScale(normalizedValue).alpha(0.7).css();
+
+                                return color;
+                            }
+
+                            shapeData.features.forEach(feature => {
+                                const coordinates = feature.geometry.coordinates;
+                                const lat = [];
+                                const lon = [];
+
+                                function processCoordinates(coords) {
+                                    if (Array.isArray(coords[0])) {
+                                        coords.forEach(innerCoord => {
+                                            processCoordinates(innerCoord);
+                                        });
+                                    } else {
+                                        lon.push(coords[0]);
+                                        lat.push(coords[1]);
+                                    }
                                 }
-                            }
 
-                            coordinates.forEach(coord => {
-                                processCoordinates(coord);
-                            });
+                                coordinates.forEach(coord => {
+                                    processCoordinates(coord);
+                                });
 
-                            const zipCode = feature.properties.GEOID20;
-                            const value = zipCodeData[zipCode];
-                            const color = getColor(value);
+                                const zipCode = feature.properties.GEOID20;
+                                const value = zipCodeData[zipCode];
+                                const color = getColor(value);
 
-                            traces.push({
-                                type: 'scattermapbox',
-                                lat: lat,
-                                lon: lon,
-                                mode: 'lines',
-                                fill: 'toself',
-                                fillcolor: color,
-                                line: {
-                                    width: 2,
-                                    color: 'gray'
-                                },
-                                hoverinfo: 'none'
-                            });
-
-                            const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
-                            const centroid_lon = parseFloat(feature.properties.INTPTLON20);
-                            let displayValue = '';
-
-                            if (value !== undefined) {
-                                displayValue = changeType === 'percent' && dataType === 'change' ? `${value.toFixed(1)}%` : value.toFixed(0);
-                            }
-
-                            const text_label = `Zipcode: ${zipCode}<br>${metric} change: ${displayValue}`;
-
-                            traces.push({
-                                type: 'scattermapbox',
-                                lat: [centroid_lat],
-                                lon: [centroid_lon],
-                                mode: 'markers',
-                                marker: {
-                                    size: 5,
-                                    color: 'black'
-                                },
-                                hoverinfo: 'none'
-                            });
-
-                            if (value !== undefined) {
                                 traces.push({
                                     type: 'scattermapbox',
-                                    lat: [centroid_lat],
-                                    lon: [centroid_lon],
-                                    mode: 'markers+text',
-                                    text: text_label,
-                                    marker: {
-                                        size: 0,
-                                        color: color
+                                    lat: lat,
+                                    lon: lon,
+                                    mode: 'lines',
+                                    fill: 'toself',
+                                    fillcolor: color,
+                                    line: {
+                                        width: 2,
+                                        color: 'gray'
                                     },
-                                    textfont: {
-                                        size: 14,
-                                        color: 'black'
-                                    },
-                                    hoverinfo: 'text'
+                                    hoverinfo: 'none'
                                 });
-                            }
+
+                                const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
+                                const centroid_lon = parseFloat(feature.properties.INTPTLON20);
+                                let displayValue = '';
+
+                                if (value !== undefined) {
+                                    displayValue = changeType === 'percent' && dataType === 'change' ? `${value.toFixed(1)}%` : value.toFixed(0);
+                                    const text_label = `Zipcode: ${zipCode}<br>${metric}: ${displayValue}`;
+
+                                    // Add the black dot marker
+                                    traces.push({
+                                        type: 'scattermapbox',
+                                        lat: [centroid_lat],
+                                        lon: [centroid_lon],
+                                        mode: 'markers',
+                                        marker: {
+                                            size: 5,
+                                            color: 'black'
+                                        },
+                                        hoverinfo: 'none'
+                                    });
+
+                                    // Add the text label for hover info
+                                    traces.push({
+                                        type: 'scattermapbox',
+                                        lat: [centroid_lat],
+                                        lon: [centroid_lon],
+                                        mode: 'markers',
+                                        text: text_label,
+                                        marker: {
+                                            size: 0,
+                                            color: 'rgba(0,0,0,0)'
+                                        },
+                                        hoverinfo: 'text'
+                                    });
+                                }
+                            });
+
+                            const layout = {
+                                mapbox: {
+                                    style: "carto-positron",
+                                    center: {
+                                        lat: 38.8339,
+                                        lon: -104.8214
+                                    },
+                                    zoom: 9.5
+                                },
+                                height: 1000, // Increased height to ensure it fills the space
+                                margin: {
+                                    l: 0,
+                                    r: 0,
+                                    t: 0,  // Set top margin to 0 to remove space for the title
+                                    b: 0
+                                },
+                                showlegend: false
+                            };
+
+                            Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
+                        })
+                        .catch(error => console.error("Error loading shape data:", error));
+                })
+                .catch(error => console.error("Error updating map data:", error));
+        }
+    }
+
+    function displayLotCoverageData(data) {
+        const traces = [];
+        const zipCodeData = {};
+
+        data.forEach(item => {
+            zipCodeData[item['ZIPCODE']] = item['LotCoverage'];
+        });
+
+        fetch('/data')
+            .then(response => response.json())
+            .then(shapeData => {
+                console.log("Received shape data for LotCoverage:", shapeData); // Debugging
+                const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
+                const minValue = Math.min(...values);
+                const maxValue = Math.max(...values);
+
+                function getColor(value) {
+                    if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
+
+                    const normalizedValue = (value - minValue) / (maxValue - minValue);
+
+                    // Use chroma.js to create a color scale from blue to red
+                    const colorScale = chroma.scale(['cyan', 'yellow']).domain([0, 1]);
+                    const color = colorScale(normalizedValue).alpha(0.7).css();
+
+                    return color;
+                }
+
+                shapeData.features.forEach(feature => {
+                    const coordinates = feature.geometry.coordinates;
+                    const lat = [];
+                    const lon = [];
+
+                    function processCoordinates(coords) {
+                        if (Array.isArray(coords[0])) {
+                            coords.forEach(innerCoord => {
+                                processCoordinates(innerCoord);
+                            });
+                        } else {
+                            lon.push(coords[0]);
+                            lat.push(coords[1]);
+                        }
+                    }
+
+                    coordinates.forEach(coord => {
+                        processCoordinates(coord);
+                    });
+
+                    const zipCode = feature.properties.GEOID20;
+                    const value = zipCodeData[zipCode];
+                    const color = getColor(value);
+
+                    traces.push({
+                        type: 'scattermapbox',
+                        lat: lat,
+                        lon: lon,
+                        mode: 'lines',
+                        fill: 'toself',
+                        fillcolor: color,
+                        line: {
+                            width: 2,
+                            color: 'gray'
+                        },
+                        hoverinfo: 'none'
+                    });
+
+                    const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
+                    const centroid_lon = parseFloat(feature.properties.INTPTLON20);
+
+                    if (value !== undefined) {
+                        const displayValue = `${value.toFixed(2)}%`;
+                        const text_label = `Zipcode: ${zipCode}<br>Lot Coverage: ${displayValue}`;
+
+                        // Add the black dot marker
+                        traces.push({
+                            type: 'scattermapbox',
+                            lat: [centroid_lat],
+                            lon: [centroid_lon],
+                            mode: 'markers',
+                            marker: {
+                                size: 5,
+                                color: 'black'
+                            },
+                            hoverinfo: 'none'
                         });
 
-                        const layout = {
-                            mapbox: {
-                                style: "carto-positron",
-                                center: {
-                                    lat: 38.8339,
-                                    lon: -104.8214
-                                },
-                                zoom: 9.5
+                        // Add the text label for hover info
+                        traces.push({
+                            type: 'scattermapbox',
+                            lat: [centroid_lat],
+                            lon: [centroid_lon],
+                            mode: 'markers',
+                            text: text_label,
+                            marker: {
+                                size: 0,
+                                color: 'rgba(0,0,0,0)'
                             },
-                            height: 1000, // Increased height to ensure it fills the space
-                            margin: {
-                                l: 0,
-                                r: 0,
-                                t: 0,  // Set top margin to 0 to remove space for the title
-                                b: 0
-                            },
-                            showlegend: false
-                        };
+                            hoverinfo: 'text'
+                        });
+                    }
+                });
 
-                        Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
-                    })
-                    .catch(error => console.error("Error loading shape data:", error));
+                const layout = {
+                    mapbox: {
+                        style: "carto-positron",
+                        center: {
+                            lat: 38.8339,
+                            lon: -104.8214
+                        },
+                        zoom: 9.5
+                    },
+                    height: 1000,
+                    margin: {
+                        l: 0,
+                        r: 0,
+                        t: 0,
+                        b: 0
+                    },
+                    showlegend: false
+                };
+
+                Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
             })
-            .catch(error => console.error("Error updating map data:", error));
+            .catch(error => console.error("Error loading shape data:", error));
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        // Event listener for data type radio buttons
+        document.querySelectorAll('input[name="data_type"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                const metric = document.getElementById('metric').value;
+                handleMetricChange(metric);
+            });
+        });
+
+        // Initial setup when the page loads
         fetch('/metrics')
             .then(response => response.json())
             .then(metrics => {
                 populateMetrics(metrics);
 
-                // Initial state: disable date selectors
-                document.getElementById('date1').disabled = true;
-                document.getElementById('date2').disabled = true;
+                // Set default metric selection if needed
+                const metricSelect = document.getElementById('metric');
+                metricSelect.value = metrics.annual.length > 0 ? metrics.annual[0] : (metrics.monthly.length > 0 ? metrics.monthly[0] : null);
+
+                // Update date selectors based on default metric
+                handleMetricChange(metricSelect.value);
 
                 // Ensure that the "change" option shows two date selectors on load
                 document.getElementById('change').checked = true;
                 document.getElementById('end-date-container').style.display = 'inline-block';
                 document.getElementById('change-type-container').style.display = 'inline-block';
             });
-
-        document.querySelectorAll('input[name="data_type"]').forEach(radio => {
-            radio.addEventListener('change', function () {
-                const endDateContainer = document.getElementById('end-date-container');
-                const changeTypeContainer = document.getElementById('change-type-container');
-                if (this.value === 'change') {
-                    endDateContainer.style.display = 'inline-block';
-                    changeTypeContainer.style.display = 'inline-block';
-                    document.getElementById('percent').disabled = false;
-                } else {
-                    endDateContainer.style.display = 'none';
-                    changeTypeContainer.style.display = 'none';
-                    document.getElementById('percent').disabled = true;
-                    document.getElementById('total').checked = true;
-                }
-            });
-        });
 
         // Load initial map with ZIP code outlines in gray
         fetch('/data')
@@ -360,23 +544,23 @@
                 });
 
                 const layout = {
-                            mapbox: {
-                                style: "carto-positron",
-                                center: {
-                                    lat: 38.8339,
-                                    lon: -104.8214
-                                },
-                                zoom: 9.5
-                            },
-                            height: 1000, // Increased height to ensure it fills the space
-                            margin: {
-                                l: 0,
-                                r: 0,
-                                t: 0,  // Set top margin to 0 to remove space for the title
-                                b: 0
-                            },
-                            showlegend: false
-                        };
+                    mapbox: {
+                        style: "carto-positron",
+                        center: {
+                            lat: 38.8339,
+                            lon: -104.8214
+                        },
+                        zoom: 9.5
+                    },
+                    height: 1000, // Increased height to ensure it fills the space
+                    margin: {
+                        l: 0,
+                        r: 0,
+                        t: 0,  // Set top margin to 0 to remove space for the title
+                        b: 0
+                    },
+                    showlegend: false
+                };
 
                 Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
             })
