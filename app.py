@@ -6,14 +6,29 @@ import json
 
 app = Flask(__name__)
 
-# Load Colorado Springs shape data
-COS_shape_data = gpd.read_file("data/processed/COS_shape_data.geojson")
 
-# Load processed statewide data
+# Load shape and regional data - these are the shapefile data of zipcodes
+# from the TIGER database that roughly correspond to most recent zipcode area
+# coverage, along with the data compiled through my other research. This data is
+# zipcode-level, monthly home value data and annual socioeconomic data from the census
+COS_shape_data = gpd.read_file("data/processed/COS_shape_data.geojson")
 annual_data = pd.read_csv("data/processed/annual_data.csv")
 monthly_data = pd.read_csv("data/processed/monthly_data.csv")
 
-# Load pre-aggregated data
+# Load forecast datasets - these are the SARIMA and LSTM models forecasted
+# from monthly ZHVI data Jan 2011 through Nov 2024
+sarima_data = pd.read_csv("data/forecast_data/SARIMA_ZHVI_forecast_Colorado_Springs.csv")
+lstm_data = pd.read_csv("data/forecast_data/LSTM_ZHVI_forecast_Colorado_Springs.csv")
+
+# Rename forecast column for clarity if needed
+sarima_data.rename(columns={"Forecast_ZHVI": "SARIMA_forecast"}, inplace=True)
+lstm_data.rename(columns={"Forecast_ZHVI": "LSTM_forecast"}, inplace=True)
+
+# Ensure date columns are consistent (we will use YYYY-MM-DD as string format)
+# Optionally, you can convert date strings to datetime objects if needed.
+
+# Load additional data - this is data that aggregates county treasurer data of
+# individual plot coverage to the zipcode level
 plat_coverage = pd.read_csv('data/processed/plat_coverage.csv')
 zipcode_coverage = pd.read_csv('data/processed/zipcode_coverage.csv')
 
@@ -25,51 +40,88 @@ COS_zips = ["80901", "80902", "80903", "80904", "80905", "80906", "80907", "8090
             "80942", "80943", "80944", "80945", "80946", "80947", "80949", "80950", "80951", "80960",
             "80962", "80970", "80977", "80995", "80997"]
 
-# Ensure ZIPCODE is a string with leading zeros
+# Ensure ZIPCODE is formatted correctly
 zipcode_coverage = zipcode_coverage.dropna(subset=['ZIPCODE']).reset_index(drop=True)
 zipcode_coverage['ZIPCODE'] = zipcode_coverage['ZIPCODE'].astype(int).astype(str).str.zfill(5)
-
-# Filter to include only Colorado Springs ZIP codes
 zipcode_coverage = zipcode_coverage[zipcode_coverage['ZIPCODE'].isin(COS_zips)].reset_index(drop=True)
 
+# ---------------------------
+# Routes
+# ---------------------------
+
+# Landing page
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# Loading shape data for zipcode mapping
 @app.route('/data')
 def data():
-    # Convert the GeoDataFrame to GeoJSON and return it as JSON
     data_geojson = COS_shape_data.to_json()
     return jsonify(json.loads(data_geojson))
 
+# Loading pull-down selectable data
 @app.route('/metrics')
 def metrics():
-    annual_metrics = annual_data.columns[2:].tolist()  # Exclude ZIP Code and Year columns
-    monthly_metrics = monthly_data.columns[2:].tolist()  # Exclude ZIP Code and Date columns
-    custom_metrics = ['LotCoverage']  # Add your custom metric(s)
-    return jsonify({'annual': annual_metrics, 'monthly': monthly_metrics, 'custom': custom_metrics})
+    annual_metrics = annual_data.columns[2:].tolist()
+    monthly_metrics = monthly_data.columns[2:].tolist()
+    custom_metrics = ['LotCoverage']
+    # Hard-code forecast metric names (they should match those used in update_data)
+    forecast_metrics = ['SARIMA_forecast', 'LSTM_forecast']
+    return jsonify({
+        'annual': annual_metrics,
+        'monthly': monthly_metrics,
+        'custom': custom_metrics,
+        'forecast': forecast_metrics
+    })
 
 @app.route('/lot_coverage_zipcode')
 def lot_coverage_zipcode():
     return jsonify(zipcode_coverage.to_dict(orient='records'))
 
+# Loading and formatting forecasting data
+@app.route('/forecast_dates')
+def forecast_dates():
+    # Combine unique forecast dates from both datasets
+    sarima_dates = sarima_data['Date'].unique().tolist()
+    lstm_dates = lstm_data['Date'].unique().tolist()
+    all_dates = sorted(set(sarima_dates + lstm_dates))
+    return jsonify(all_dates)
+
+# Rading page changes and updating calls accordingly
 @app.route('/update_data', methods=['POST'])
 def update_data():
     request_data = request.json
-    metric = request_data['metric']
-    data_type = request_data['data_type']
-    date_type = request_data['date_type']
-    start_date = request_data['start_date']
+    metric = request_data.get('metric')
+    data_type = request_data.get('data_type')
+    date_type = request_data.get('date_type')
+    start_date = request_data.get('start_date')
     end_date = request_data.get('end_date')
-    change_type = request_data.get('change_type', 'total')  # default to 'total' if not provided
+    change_type = request_data.get('change_type', 'total')
 
-    print(f"Metric: {metric}")
-    print(f"Data Type: {data_type}")
-    print(f"Date Type: {date_type}")
-    print(f"Start Date: {start_date}")
-    print(f"End Date: {end_date}")
-    print(f"Change Type: {change_type}")
+    # Handle forecast data separately
+    if date_type == 'forecast':
+        # Select appropriate DataFrame based on metric
+        if metric == 'SARIMA_forecast':
+            df = sarima_data
+            value_col = 'SARIMA_forecast'
+        elif metric == 'LSTM_forecast':
+            df = lstm_data
+            value_col = 'LSTM_forecast'
+        else:
+            return jsonify([])
 
+        # Filter forecast data for the selected date
+        filtered = df[df['Date'] == start_date]
+        response_data = []
+        for _, row in filtered.iterrows():
+            response_data.append({
+                'RegionName': str(row['ZIP']).zfill(5),  # Ensure ZIP code format matches
+                metric: row[value_col]
+            })
+        return jsonify(response_data)
+
+    # Logic for annual, monthly, and custom metrics in the pulldown
     if date_type == 'annual':
         start_data = annual_data[annual_data['year'] == int(start_date)]
         if end_date:
@@ -87,22 +139,15 @@ def update_data():
                 combined_data[metric] = combined_data[metric].round(0)
             combined_data = combined_data.dropna(subset=[metric])
             response_data = combined_data[[metric]].reset_index().to_dict(orient='records')
-
-            # Print the head of the DataFrame to the terminal
-            print("Combined Data Head:\n", combined_data.head())
-
         else:
             response_data = start_data[['RegionName', metric]].dropna().to_dict(orient='records')
-
-            # Print the head of the start_data DataFrame to the terminal
-            print("Start Data Head:\n", start_data.head())
+        return jsonify(response_data)
 
     else:
+        # Otherwise we have monthly and custom data
         start_data = monthly_data[monthly_data['datesubstr'] == start_date]
-        print(f"Start Data for {start_date}: {start_data}")
         if end_date:
             end_data = monthly_data[monthly_data['datesubstr'] == end_date]
-            print(f"End Data for {end_date}: {end_data}")
             start_data = start_data.set_index('RegionName')
             end_data = end_data.set_index('RegionName')
             start_data = start_data.add_suffix('_start')
@@ -116,19 +161,9 @@ def update_data():
                 combined_data[metric] = combined_data[metric].round(0)
             combined_data = combined_data.dropna(subset=[metric])
             response_data = combined_data[[metric]].reset_index().to_dict(orient='records')
-
-            # Print the head of the combined DataFrame to the terminal
-            print("Combined Data Head:\n", combined_data.head())
-
         else:
             response_data = start_data[['RegionName', metric]].dropna().to_dict(orient='records')
-
-            # Print the head of the start_data DataFrame to the terminal
-            print("Start Data Head:\n", start_data.head())
-
-    print(f"Response Data: {response_data}")
-    return jsonify(response_data)
-
+        return jsonify(response_data)
 
 @app.route('/static/<path:path>')
 def send_static(path):

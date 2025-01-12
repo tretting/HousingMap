@@ -146,3 +146,9 @@ footer {
     display: flex;
     justify-content: left;
 }
+
+/* Hyperlink color */
+.orange-link {
+    color: #FF7F00; 
+    text-decoration: none; 
+  }

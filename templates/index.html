@@ -55,9 +55,10 @@
 
         <div class="info-container">
             <p>
-                Use this tool to view housing-related or demographic-related info in Colorado Springs. Where you see 'ZVHI' in the selection field, this indicates data pulled from Zillow's Home Value Index at the zipcode level, unless you see the suffix 'CL' for city-level. The tags 'sfr' or '2br' stand for 'single-family residence' and 'two bedroom', etc. The 'annual' and 'monthly' sections denote the fields for which the data is available annually or monthly. Gray areas indicate no data points for the zipcode. Lot coverage gives the average percentage of a lot in that zipcode covered by garage square footage plus first-floor square footage. Dollar values are inflation-adjusted to 2021 USD.
+                Use this tool to view housing-related or demographic-related info in Colorado Springs. I provide forecasts for the next 12 months of home value using the SARIMA and LSTM prediction models. Lot coverage gives the average percentage of a lot in that zipcode covered by garage square footage plus first-floor square footage. When applicable, 'Change' vs 'Snapshot' highlights percentage change vs one period level for the chosen metric. Where you see 'ZVHI' in the selection field, this indicates data pulled from Zillow's Home Value Index at the zipcode level (CL suffix is city-level). The tags 'sfr' or '2br' stand for 'single-family residence' and 'two bedroom', etc. The 'annual' and 'monthly' sections denote the fields for which the data is available annually or monthly. Gray areas indicate no data points for the zipcode. Dollar values are inflation-adjusted to 2021 USD. Code can be found 
+                <a href="https://github.com/tretting/HousingMap" target="_blank" class="orange-link">here</a>.
                 <br><br>
-                This data is not guaranteed to be correct or up to date, it is merely for exploratory purposes. Be sure to consult both the city government's and county assessor's tools and official/legal records. If the app becomes unresponsive, please reload the page.
+                This data may not be fully up to date and is for exploratory purposes. Be sure to consult both the city government's and county assessor's tools and official/legal records. If the app becomes unresponsive, please reload the page.
             </p>
         </div>
 
@@ -65,7 +66,9 @@
     <div id="map"></div>
 
     <script>
-    // Global variables
+    // -------------------------------------------------------------
+    // Global Variables
+    // -------------------------------------------------------------
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const annual_start_year = 2011;
     const annual_end_year = 2021;
@@ -73,16 +76,18 @@
     const monthly_end_year = 2023;
     let currentMetrics = null;
 
-    // Functions moved to global scope
+    // -------------------------------------------------------------
+    // Populate Metrics in the Dropdown
+    // -------------------------------------------------------------
     function populateMetrics(metrics) {
         console.log("Metrics received from server:", metrics); // Debugging
         currentMetrics = metrics; // Store metrics globally
         const metricSelect = document.getElementById('metric');
         metricSelect.innerHTML = '';
 
+        // Annual Metrics
         const annualGroup = document.createElement('optgroup');
         annualGroup.label = 'Annual Metrics';
-
         metrics.annual.forEach(metric => {
             const option = document.createElement('option');
             option.value = metric;
@@ -90,9 +95,9 @@
             annualGroup.appendChild(option);
         });
 
+        // Monthly Metrics
         const monthlyGroup = document.createElement('optgroup');
         monthlyGroup.label = 'Monthly Metrics';
-
         metrics.monthly.forEach(metric => {
             const option = document.createElement('option');
             option.value = metric;
@@ -100,7 +105,7 @@
             monthlyGroup.appendChild(option);
         });
 
-        // Add custom metrics if any
+        // Custom Metrics (if any)
         if (metrics.custom && metrics.custom.length > 0) {
             const customGroup = document.createElement('optgroup');
             customGroup.label = 'Custom Metrics';
@@ -111,20 +116,40 @@
                 option.text = metric;
                 customGroup.appendChild(option);
             });
-
             metricSelect.appendChild(customGroup);
         }
 
+        // Forecast Metrics (New)
+        if (metrics.forecast && metrics.forecast.length > 0) {
+            const forecastGroup = document.createElement('optgroup');
+            forecastGroup.label = 'Forecast Metrics';
+
+            metrics.forecast.forEach(metric => {
+                const option = document.createElement('option');
+                option.value = metric;
+                option.text = metric;
+                forecastGroup.appendChild(option);
+            });
+            metricSelect.appendChild(forecastGroup);
+        }
+
+        // Append the annual and monthly groups *after* custom if you prefer a certain ordering
         metricSelect.appendChild(annualGroup);
         metricSelect.appendChild(monthlyGroup);
 
+        // Listen for changes
         metricSelect.addEventListener('change', function () {
             handleMetricChange(this.value);
         });
     }
 
+    // -------------------------------------------------------------
+    // Populate Date Selectors
+    // -------------------------------------------------------------
     function populateDates(selectElement, dateType) {
+        // Clears existing options
         selectElement.innerHTML = '';
+        // Optionally add a blank default
         const defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.text = '';
@@ -149,16 +174,55 @@
         }
     }
 
+    // Populate forecast dates by fetching from /forecast_dates
+    function populateForecastDates(selectElement) {
+        selectElement.innerHTML = '';
+        // Optionally, add a blank default
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.text = '';
+        selectElement.appendChild(defaultOption);
+
+        fetch('/forecast_dates')
+            .then(response => response.json())
+            .then(dates => {
+                // dates is an array of strings like ["2024-12-31", "2025-01-31", ...]
+                dates.forEach(dateStr => {
+                    const option = document.createElement('option');
+                    option.value = dateStr; 
+                    option.text = dateStr; // or format it however you prefer
+                    selectElement.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching forecast dates:', error);
+            });
+    }
+
+    // -------------------------------------------------------------
+    // Handle Metric Change
+    // -------------------------------------------------------------
     function handleMetricChange(selectedMetric) {
         console.log("Selected Metric:", selectedMetric);
         console.log("Current Metrics:", currentMetrics);
 
-        const dateType = currentMetrics.annual.includes(selectedMetric) ? 'annual' :
-                        currentMetrics.monthly.includes(selectedMetric) ? 'monthly' : 'custom';
-        console.log("Determined Date Type:", dateType);
+        // Determine which category the selected metric belongs to
+        let dateType = 'custom';  // default
+        if (currentMetrics.forecast.includes(selectedMetric)) {
+            dateType = 'forecast';
+        } else if (currentMetrics.annual.includes(selectedMetric)) {
+            dateType = 'annual';
+        } else if (currentMetrics.monthly.includes(selectedMetric)) {
+            dateType = 'monthly';
+        } else if (currentMetrics.custom.includes(selectedMetric)) {
+            dateType = 'custom';
+        }
+
+        console.log("Determined dateType:", dateType);
 
         const startDateElement = document.getElementById('date1');
         const endDateElement = document.getElementById('date2');
+        const changeTypeContainer = document.getElementById('change-type-container');
 
         if (dateType === 'custom') {
             // Hide date selectors for custom metrics
@@ -166,11 +230,24 @@
             endDateElement.disabled = true;
             document.getElementById('start-date-container').style.display = 'none';
             document.getElementById('end-date-container').style.display = 'none';
-            document.getElementById('change-type-container').style.display = 'none';
-        } else {
-            // Show date selectors for standard metrics
+            changeTypeContainer.style.display = 'none';
+
+        } else if (dateType === 'forecast') {
+            // Show only one date selector, hide second
             document.getElementById('start-date-container').style.display = 'inline-block';
-            document.getElementById('change-type-container').style.display = 'inline-block';
+            document.getElementById('end-date-container').style.display = 'none';
+            changeTypeContainer.style.display = 'none'; 
+            // Because we're likely doing a snapshot for forecasts, not a "change."
+
+            // Populate forecast dates
+            populateForecastDates(startDateElement);
+            startDateElement.disabled = false;
+            endDateElement.disabled = true;
+
+        } else {
+            // dateType = 'annual' or 'monthly'
+            document.getElementById('start-date-container').style.display = 'inline-block';
+            changeTypeContainer.style.display = 'inline-block';
 
             if (document.querySelector('input[name="data_type"]:checked').value === 'change') {
                 document.getElementById('end-date-container').style.display = 'inline-block';
@@ -187,10 +264,16 @@
         }
     }
 
+    // -------------------------------------------------------------
+    // Update Map
+    // -------------------------------------------------------------
     function updateMap() {
         console.log("updateMap function called");
         const metric = document.getElementById('metric').value;
+
+        // Check if it's a custom or forecast metric
         const isCustomMetric = currentMetrics.custom && currentMetrics.custom.includes(metric);
+        const isForecastMetric = currentMetrics.forecast && currentMetrics.forecast.includes(metric);
 
         if (isCustomMetric) {
             // Handle custom metrics like LotCoverage
@@ -202,153 +285,181 @@
                     })
                     .catch(error => console.error("Error fetching lot coverage data:", error));
             }
-        } else {
-            // Existing code for other metrics
-            const dataType = document.querySelector('input[name="data_type"]:checked').value;
-            const date1 = document.getElementById('date1').value;
-            const date2 = dataType === 'change' ? document.getElementById('date2').value : null;
-            const changeType = document.querySelector('input[name="change_type"]:checked').value;
-            const dateType = currentMetrics.annual.includes(metric) ? 'annual' : 'monthly';
+            return;
+        }
 
-            fetch('/update_data', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ metric: metric, data_type: dataType, date_type: dateType, start_date: date1, end_date: date2, change_type: changeType })
-                })
+        // If it's not custom, we either have annual, monthly, or forecast
+        let dateType = 'monthly'; // default
+        if (currentMetrics.annual.includes(metric)) dateType = 'annual';
+        if (isForecastMetric) dateType = 'forecast';
+
+        // Gather user input
+        const dataType = document.querySelector('input[name="data_type"]:checked').value;
+        const changeType = document.querySelector('input[name="change_type"]:checked').value;
+        const date1 = document.getElementById('date1').value;
+        let date2 = null;
+        
+        // For forecast, only use one date
+        if (!isForecastMetric) {
+            // If user chose "change", grab the second date
+            date2 = dataType === 'change' ? document.getElementById('date2').value : null;
+        }
+
+        // Build the request body
+        const body = {
+            metric: metric,
+            data_type: dataType,
+            date_type: dateType,
+            start_date: date1,
+            end_date: date2,
+            change_type: changeType
+        };
+
+        console.log("Request body to /update_data:", body);
+
+        fetch('/update_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("Received data from /update_data:", data);  // Debugging
+            const traces = [];
+            const zipCodeData = {};
+
+            data.forEach(item => {
+                zipCodeData[item['RegionName']] = item[metric];
+            });
+
+            fetch('/data')
                 .then(response => response.json())
-                .then(data => {
-                    console.log("Received data from /update_data:", data);  // Debugging
-                    const traces = [];
-                    const zipCodeData = {};
+                .then(shapeData => {
+                    console.log("Received shape data:", shapeData);  // Debugging
+                    const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
+                    const minValue = Math.min(...values);
+                    const maxValue = Math.max(...values);
 
-                    data.forEach(item => {
-                        zipCodeData[item['RegionName']] = item[metric];
-                    });
+                    function getColor(value) {
+                        if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
+                        const normalizedValue = (value - minValue) / (maxValue - minValue);
 
-                    fetch('/data')
-                        .then(response => response.json())
-                        .then(shapeData => {
-                            console.log("Received shape data:", shapeData);  // Debugging
-                            const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
-                            const minValue = Math.min(...values);
-                            const maxValue = Math.max(...values);
+                        // Use chroma.js to create a color scale
+                        const colorScale = chroma.scale(['cyan', 'yellow']).domain([0, 1]);
+                        return colorScale(normalizedValue).alpha(0.7).css();
+                    }
 
-                            function getColor(value) {
-                                if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
-                                
-                                const normalizedValue = (value - minValue) / (maxValue - minValue);
-                                
-                                // Use chroma.js to create a color scale from blue to red
-                                const colorScale = chroma.scale(['cyan', 'yellow']).domain([0, 1]);
-                                const color = colorScale(normalizedValue).alpha(0.7).css();
+                    shapeData.features.forEach(feature => {
+                        const coordinates = feature.geometry.coordinates;
+                        const lat = [];
+                        const lon = [];
 
-                                return color;
+                        function processCoordinates(coords) {
+                            if (Array.isArray(coords[0])) {
+                                coords.forEach(innerCoord => {
+                                    processCoordinates(innerCoord);
+                                });
+                            } else {
+                                lon.push(coords[0]);
+                                lat.push(coords[1]);
+                            }
+                        }
+
+                        coordinates.forEach(coord => {
+                            processCoordinates(coord);
+                        });
+
+                        const zipCode = feature.properties.GEOID20;
+                        const value = zipCodeData[zipCode];
+                        const color = getColor(value);
+
+                        traces.push({
+                            type: 'scattermapbox',
+                            lat: lat,
+                            lon: lon,
+                            mode: 'lines',
+                            fill: 'toself',
+                            fillcolor: color,
+                            line: {
+                                width: 2,
+                                color: 'gray'
+                            },
+                            hoverinfo: 'none'
+                        });
+
+                        const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
+                        const centroid_lon = parseFloat(feature.properties.INTPTLON20);
+
+                        if (value !== undefined) {
+                            // If "change" + "percent" => show 1 decimal, else int
+                            let displayValue = '';
+                            if (dataType === 'change' && changeType === 'percent') {
+                                displayValue = `${value.toFixed(1)}%`;
+                            } else {
+                                displayValue = value.toFixed(0);
                             }
 
-                            shapeData.features.forEach(feature => {
-                                const coordinates = feature.geometry.coordinates;
-                                const lat = [];
-                                const lon = [];
+                            const text_label = `Zipcode: ${zipCode}<br>${metric}: ${displayValue}`;
 
-                                function processCoordinates(coords) {
-                                    if (Array.isArray(coords[0])) {
-                                        coords.forEach(innerCoord => {
-                                            processCoordinates(innerCoord);
-                                        });
-                                    } else {
-                                        lon.push(coords[0]);
-                                        lat.push(coords[1]);
-                                    }
-                                }
-
-                                coordinates.forEach(coord => {
-                                    processCoordinates(coord);
-                                });
-
-                                const zipCode = feature.properties.GEOID20;
-                                const value = zipCodeData[zipCode];
-                                const color = getColor(value);
-
-                                traces.push({
-                                    type: 'scattermapbox',
-                                    lat: lat,
-                                    lon: lon,
-                                    mode: 'lines',
-                                    fill: 'toself',
-                                    fillcolor: color,
-                                    line: {
-                                        width: 2,
-                                        color: 'gray'
-                                    },
-                                    hoverinfo: 'none'
-                                });
-
-                                const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
-                                const centroid_lon = parseFloat(feature.properties.INTPTLON20);
-                                let displayValue = '';
-
-                                if (value !== undefined) {
-                                    displayValue = changeType === 'percent' && dataType === 'change' ? `${value.toFixed(1)}%` : value.toFixed(0);
-                                    const text_label = `Zipcode: ${zipCode}<br>${metric}: ${displayValue}`;
-
-                                    // Add the black dot marker
-                                    traces.push({
-                                        type: 'scattermapbox',
-                                        lat: [centroid_lat],
-                                        lon: [centroid_lon],
-                                        mode: 'markers',
-                                        marker: {
-                                            size: 5,
-                                            color: 'black'
-                                        },
-                                        hoverinfo: 'none'
-                                    });
-
-                                    // Add the text label for hover info
-                                    traces.push({
-                                        type: 'scattermapbox',
-                                        lat: [centroid_lat],
-                                        lon: [centroid_lon],
-                                        mode: 'markers',
-                                        text: text_label,
-                                        marker: {
-                                            size: 0,
-                                            color: 'rgba(0,0,0,0)'
-                                        },
-                                        hoverinfo: 'text'
-                                    });
-                                }
+                            // Add a small black dot marker
+                            traces.push({
+                                type: 'scattermapbox',
+                                lat: [centroid_lat],
+                                lon: [centroid_lon],
+                                mode: 'markers',
+                                marker: {
+                                    size: 5,
+                                    color: 'black'
+                                },
+                                hoverinfo: 'none'
                             });
 
-                            const layout = {
-                                mapbox: {
-                                    style: "carto-positron",
-                                    center: {
-                                        lat: 38.8339,
-                                        lon: -104.8214
-                                    },
-                                    zoom: 9.5
+                            // Add hover text
+                            traces.push({
+                                type: 'scattermapbox',
+                                lat: [centroid_lat],
+                                lon: [centroid_lon],
+                                mode: 'markers',
+                                text: text_label,
+                                marker: {
+                                    size: 0,
+                                    color: 'rgba(0,0,0,0)'
                                 },
-                                height: 1000, // Increased height to ensure it fills the space
-                                margin: {
-                                    l: 0,
-                                    r: 0,
-                                    t: 0,  // Set top margin to 0 to remove space for the title
-                                    b: 0
-                                },
-                                showlegend: false
-                            };
+                                hoverinfo: 'text'
+                            });
+                        }
+                    });
 
-                            Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
-                        })
-                        .catch(error => console.error("Error loading shape data:", error));
+                    // Plotly layout
+                    const layout = {
+                        mapbox: {
+                            style: "carto-positron",
+                            center: {
+                                lat: 38.8339,
+                                lon: -104.8214
+                            },
+                            zoom: 9.5
+                        },
+                        height: 1000,
+                        margin: {
+                            l: 0,
+                            r: 0,
+                            t: 0,
+                            b: 0
+                        },
+                        showlegend: false
+                    };
+
+                    Plotly.newPlot('map', traces, layout, { mapboxAccessToken: 'YOUR_MAPBOX_ACCESS_TOKEN' });
                 })
-                .catch(error => console.error("Error updating map data:", error));
-        }
+                .catch(error => console.error("Error loading shape data:", error));
+        })
+        .catch(error => console.error("Error updating map data:", error));
     }
 
+    // -------------------------------------------------------------
+    // Display Lot Coverage Data
+    // -------------------------------------------------------------
     function displayLotCoverageData(data) {
         const traces = [];
         const zipCodeData = {};
@@ -360,21 +471,16 @@
         fetch('/data')
             .then(response => response.json())
             .then(shapeData => {
-                console.log("Received shape data for LotCoverage:", shapeData); // Debugging
+                console.log("Received shape data for LotCoverage:", shapeData);
                 const values = Object.values(zipCodeData).filter(value => value !== undefined && !isNaN(value));
                 const minValue = Math.min(...values);
                 const maxValue = Math.max(...values);
 
                 function getColor(value) {
-                    if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)'; // Light gray for no data
-
+                    if (value === undefined || isNaN(value)) return 'rgba(200, 200, 200, 0.7)';
                     const normalizedValue = (value - minValue) / (maxValue - minValue);
-
-                    // Use chroma.js to create a color scale from blue to red
                     const colorScale = chroma.scale(['cyan', 'yellow']).domain([0, 1]);
-                    const color = colorScale(normalizedValue).alpha(0.7).css();
-
-                    return color;
+                    return colorScale(normalizedValue).alpha(0.7).css();
                 }
 
                 shapeData.features.forEach(feature => {
@@ -417,12 +523,11 @@
 
                     const centroid_lat = parseFloat(feature.properties.INTPTLAT20);
                     const centroid_lon = parseFloat(feature.properties.INTPTLON20);
-
                     if (value !== undefined) {
                         const displayValue = `${value.toFixed(2)}%`;
                         const text_label = `Zipcode: ${zipCode}<br>Lot Coverage: ${displayValue}`;
 
-                        // Add the black dot marker
+                        // Black dot marker
                         traces.push({
                             type: 'scattermapbox',
                             lat: [centroid_lat],
@@ -435,7 +540,7 @@
                             hoverinfo: 'none'
                         });
 
-                        // Add the text label for hover info
+                        // Hover text
                         traces.push({
                             type: 'scattermapbox',
                             lat: [centroid_lat],
@@ -475,8 +580,12 @@
             .catch(error => console.error("Error loading shape data:", error));
     }
 
+    // -------------------------------------------------------------
+    // On Page Load
+    // -------------------------------------------------------------
     document.addEventListener('DOMContentLoaded', function () {
-        // Event listener for data type radio buttons
+
+        // 1. Event listener for data type radio buttons
         document.querySelectorAll('input[name="data_type"]').forEach(radio => {
             radio.addEventListener('change', function () {
                 const metric = document.getElementById('metric').value;
@@ -484,26 +593,32 @@
             });
         });
 
-        // Initial setup when the page loads
+        // 2. Fetch available metrics
         fetch('/metrics')
             .then(response => response.json())
             .then(metrics => {
                 populateMetrics(metrics);
 
-                // Set default metric selection if needed
+                // Pick a default metric to show
                 const metricSelect = document.getElementById('metric');
-                metricSelect.value = metrics.annual.length > 0 ? metrics.annual[0] : (metrics.monthly.length > 0 ? metrics.monthly[0] : null);
+                if (metrics.annual.length > 0) {
+                    metricSelect.value = metrics.annual[0];
+                } else if (metrics.monthly.length > 0) {
+                    metricSelect.value = metrics.monthly[0];
+                } else if (metrics.forecast && metrics.forecast.length > 0) {
+                    metricSelect.value = metrics.forecast[0];
+                }
 
                 // Update date selectors based on default metric
                 handleMetricChange(metricSelect.value);
 
-                // Ensure that the "change" option shows two date selectors on load
+                // Ensure "change" mode is selected by default
                 document.getElementById('change').checked = true;
                 document.getElementById('end-date-container').style.display = 'inline-block';
                 document.getElementById('change-type-container').style.display = 'inline-block';
             });
 
-        // Load initial map with ZIP code outlines in gray
+        // 3. Load initial map with ZIP code outlines in gray
         fetch('/data')
             .then(response => response.json())
             .then(data => {
@@ -552,11 +667,11 @@
                         },
                         zoom: 9.5
                     },
-                    height: 1000, // Increased height to ensure it fills the space
+                    height: 1000,
                     margin: {
                         l: 0,
                         r: 0,
-                        t: 0,  // Set top margin to 0 to remove space for the title
+                        t: 0,
                         b: 0
                     },
                     showlegend: false
