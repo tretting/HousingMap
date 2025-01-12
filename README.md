@@ -11,6 +11,8 @@ This repository hosts a Flask-based web application for visualizing housing-rela
 
 ## Key info
 
+Data sources: Zillow from home values, Census for socioeconomic data.
+
 This repository includes everything you need to recreate the app here: https://www.andyretting.org/portfolio/coshousingtool, with the exception of the TIGER zipcode shapefile data, which you must download. It is too large to include here. The code to process the data is included, but you must ensure your directory structure and filenames are corretly specified. 
 
 
