@@ -94,6 +94,16 @@ h3 {
     line-height: 1; /* Ensures consistent line height for the label */
 }
 
+#mode-switch {
+    display: flex;
+    gap: 0.5em;       /* space between the buttons */
+    align-items: center;
+  }
+
+#mode-switch .button {
+    flex: 1;       /* prevents wrapping */
+}
+
 /* Button styling */
 button {
     width: 100%;
@@ -110,6 +120,33 @@ button {
 /* Button hover effect */
 button:hover {
     background-color: #c0392b;
+}
+
+#spinner {
+    position: fixed;
+    top:0; left:0;
+    width:100vw; height:100vh;
+    align-items:center;
+    justify-content:center;
+    background: rgba(0,0,0,0.4);
+    z-index:2147483647;
+    display: none;
+}
+
+#spinner.visible {
+    display: flex !important;
+}
+
+#spinner .spinner-icon {
+    border: 6px solid rgba(255,255,255,0.2);
+    border-top: 6px solid #f5853f;
+    border-radius: 50%;
+    width:50px; height:50px;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
 /* Map container styling */

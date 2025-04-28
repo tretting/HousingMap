@@ -3,9 +3,9 @@ import pandas as pd
 import numpy as np
 import geopandas as gpd
 import json
+import math
 
 app = Flask(__name__)
-
 
 # Load shape and regional data - these are the shapefile data of zipcodes
 # from the TIGER database that roughly correspond to most recent zipcode area
@@ -164,6 +164,36 @@ def update_data():
         else:
             response_data = start_data[['RegionName', metric]].dropna().to_dict(orient='records')
         return jsonify(response_data)
+      
+@app.route('/infill_scores')
+def infill_scores():
+    path      = app.root_path + "/data/Parcels/preds_lg_kf.geojson"
+    gdf       = gpd.read_file(path)
+    typ       = request.args.get("type", "logistic")
+    score_col = "predicted_prob_lg" if typ=="logistic" else "predicted_prob_kf"
+    text_col  = "hover_text_lg"     if typ=="logistic" else "hover_text_kf"
+
+    points = []
+    for _, row in gdf.iterrows():
+        score = row[score_col]
+        size  = row["marker_size"]
+        # skip invalid or zero‐size
+        if size <= 0 or score is None or math.isnan(score):
+            continue
+
+        points.append({
+            "latitude":    row.geometry.y,
+            "longitude":   row.geometry.x,
+            "score":       float(score),
+            "text":        row[text_col],
+            "marker_size": float(size)
+        })
+
+    # DEBUG INFO: return both count and points
+    return jsonify({
+        "count":  len(points),
+        "points": points
+    })
 
 @app.route('/static/<path:path>')
 def send_static(path):
