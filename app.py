@@ -1,9 +1,10 @@
-from flask import Flask, render_template, jsonify, request, send_from_directory
+from flask import Flask, render_template, jsonify, request, send_from_directory, abort
 import pandas as pd
 import numpy as np
 import geopandas as gpd
 import json
 import math
+import os
 
 app = Flask(__name__)
 
@@ -66,7 +67,8 @@ def metrics():
     annual_metrics = annual_data.columns[2:].tolist()
     monthly_metrics = monthly_data.columns[2:].tolist()
     custom_metrics = ['LotCoverage']
-    # Hard-code forecast metric names (they should match those used in update_data)
+
+    # Hard-coded forecast metric names
     forecast_metrics = ['SARIMA_forecast', 'LSTM_forecast']
     return jsonify({
         'annual': annual_metrics,
@@ -101,6 +103,7 @@ def update_data():
 
     # Handle forecast data separately
     if date_type == 'forecast':
+
         # Select appropriate DataFrame based on metric
         if metric == 'SARIMA_forecast':
             df = sarima_data
@@ -164,7 +167,8 @@ def update_data():
         else:
             response_data = start_data[['RegionName', metric]].dropna().to_dict(orient='records')
         return jsonify(response_data)
-      
+
+# Infill routing      
 @app.route('/infill_scores')
 def infill_scores():
     path      = app.root_path + "/data/Parcels/preds_lg_kf.geojson"
@@ -177,10 +181,12 @@ def infill_scores():
     for _, row in gdf.iterrows():
         score = row[score_col]
         size  = row["marker_size"]
+
         # skip invalid or zero‐size
         if size <= 0 or score is None or math.isnan(score):
             continue
-
+        
+        # Parcels need their specific coordinates in this functionality, as well as the value and score (for display and heatmap gradient)
         points.append({
             "latitude":    row.geometry.y,
             "longitude":   row.geometry.x,
@@ -189,7 +195,7 @@ def infill_scores():
             "marker_size": float(size)
         })
 
-    # DEBUG INFO: return both count and points
+    # Debug: return both count and points
     return jsonify({
         "count":  len(points),
         "points": points
@@ -198,6 +204,24 @@ def infill_scores():
 @app.route('/static/<path:path>')
 def send_static(path):
     return send_from_directory('static', path)
+
+# Horizons matching folder structure
+ALLOWED_HORIZONS = {'1mo', '3mo', '1yr'}
+
+# Sending appropriate PNG to forecast comparison
+@app.route('/forecast_graph/<horizon>/<zipcode>')
+def serve_forecast_graph(horizon, zipcode):
+    if horizon not in ALLOWED_HORIZONS or not zipcode.isdigit():
+        abort(404)
+
+    # Structure: RNNvLSTM/forecast_XXX/forecast_XXX_YYYYY.png, etc.
+    img_dir  = os.path.join(app.root_path, 'RNNvLSTM', f'forecast_{horizon}')
+    for fname in (f"{zipcode}.png", f"RNNvLSTM_{horizon}_{zipcode}.png"):
+        path = os.path.join(img_dir, fname)
+        if os.path.exists(path):
+            return send_from_directory(img_dir, fname)
+
+    abort(404)
 
 if __name__ == '__main__':
     app.run(debug=True)

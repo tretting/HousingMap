@@ -8,15 +8,24 @@
     <link rel="stylesheet" type="text/css" href="/static/css/styles.css">
 </head>
 <body>
+
+    <!-- Spinner for explicitly marking load-time -->
     <div id="spinner">
         <div class="spinner-icon"></div>
     </div>
+
+    <!-- Container for all selections across each explorer type -->
     <div id="sidebar">
         <h2>Colorado Springs Housing Explorer</h2>
         <div id="mode-switch">
+
+            <!-- Container for the navigation buttons -->
             <button id="mode-metrics" class="button">Zipcode-level Metrics</button>
-            <button id="mode-infill" class="button">Parcel-level Infill Scores</button>
+            <button id="mode-infill" class="button">Parcel Infill Scores</button>
+            <button id="mode-forecasts" class="button">Zipcode Forecast Comparisons</button>
         </div>
+
+        <!-- Selecting whether to show changes or snapshots - will dictate the pulldowns in the date-selector container -->
         <br><h3 id="label-data-type">Select Data</h3>
         <div id="data-type-container" class="select-container">
             <div class="radio-container">
@@ -39,11 +48,13 @@
             </div>
         </div>
 
+        <!-- Metric pulldown container -->
         <div id="metric-container" class="select-container">
             <label for="metric">Select Metric: </label>
             <select id="metric" name="metric"></select>
         </div><br>
 
+        <!-- Infill radio container -->
         <div id="infill-container" class="select-container" style="display:none;">
             <label>Select Infill Score:</label><br/>
             <div class="radio-container">
@@ -56,6 +67,29 @@
             </div>
           </div>
 
+        <!-- Forecast radio container -->
+        <div id="forecast-container" class="select-container" style="display:none;">
+            <label>Forecast Horizon:</label><br/>
+            <div class="radio-container">
+                <input type="radio" id="fh-1mo" name="forecast_horizon" value="1mo" checked>
+                <label for="fh-1mo">1-month forward</label>
+            </div>
+            <div class="radio-container">
+                <input type="radio" id="fh-3mo" name="forecast_horizon" value="3mo">
+                <label for="fh-3mo">3-months forward</label>
+            </div>
+            <div class="radio-container">
+                <input type="radio" id="fh-1yr" name="forecast_horizon" value="1yr">
+                <label for="fh-1yr">1-year forward</label>
+            </div>
+        </div>
+
+        <!-- floating forecast overlay -->
+        <div id="forecast-overlay">
+        <img id="forecast-img" src=""/>
+        </div>
+  
+        <!-- Date pulldown container -->
         <div class="date-container">
             <div id="start-date-container" class="select-container" style="display:inline-block;">
                 <label for="date1">Start date: </label>
@@ -68,14 +102,17 @@
             </div>
         </div>
 
+        <!-- Button that updates after all selections have been made -->
         <button onclick="updateMap()">Update Map</button>
         <div id="info-container" class="info-container">
         </div>
+
 
     </div>
     <div id="map"></div>
 
     <script>
+
     // -------------------------------------------------------------
     // Global Variables
     // -------------------------------------------------------------
@@ -85,23 +122,28 @@
     let currentMetrics = null;
 
     // Cache elements
-    const btnMetrics   = document.getElementById('mode-metrics');
-    const btnInfill    = document.getElementById('mode-infill');
-    const metricPane   = document.getElementById('metric-container');
-    const datePane     = document.getElementById('start-date-container');
-    const endDatePane  = document.getElementById('end-date-container');
-    const changePane   = document.getElementById('change-type-container');
-    const infillPane   = document.getElementById('infill-container');
-    const dataTypeLabel= document.getElementById('label-data-type');
-    const dataTypePane = document.getElementById('data-type-container');
-    const infoContainer= document.getElementById('info-container');
+    const btnMetrics    = document.getElementById('mode-metrics');
+    const btnInfill     = document.getElementById('mode-infill');
+    const btnForecasts  = document.getElementById('mode-forecasts');
+    const metricPane    = document.getElementById('metric-container');
+    const datePane      = document.getElementById('start-date-container');
+    const endDatePane   = document.getElementById('end-date-container');
+    const changePane    = document.getElementById('change-type-container');
+    const infillPane    = document.getElementById('infill-container');
+    const forecastPane  = document.getElementById('forecast-container');
+    const dataTypeLabel = document.getElementById('label-data-type');
+    const dataTypePane  = document.getElementById('data-type-container');
+    const infoContainer = document.getElementById('info-container');
 
     // -------------------------------------------------------------
     // Mode Switch Handlers
     // -------------------------------------------------------------
+
+    // Zipcode-level metrics tab listener actions
     btnMetrics.addEventListener('click', () => {
         btnMetrics.classList.add('active');
         btnInfill.classList.remove('active');
+        btnForecasts.classList.remove('active');
 
         metricPane.style.display     = 'block';
         dataTypeLabel.style.display  = 'block';
@@ -109,8 +151,9 @@
         changePane.style.display     = 'block';
         datePane.style.display       = 'inline-block';
         endDatePane.style.display    = document.getElementById('change').checked ? 'inline-block' : 'none';
-
+        document.getElementById('forecast-overlay').style.display = 'none';
         infillPane.style.display     = 'none';
+        forecastPane.style.display   = 'none';
 
         infoContainer.innerHTML = `
             <p>
@@ -120,9 +163,11 @@
         `;
     });
 
+    // Parcel infill-score tab listener actions
     btnInfill.addEventListener('click', () => {
         btnInfill.classList.add('active');
         btnMetrics.classList.remove('active');
+        btnForecasts.classList.remove('active');
 
         metricPane.style.display     = 'none';
         dataTypeLabel.style.display  = 'none';
@@ -130,8 +175,9 @@
         changePane.style.display     = 'none';
         datePane.style.display       = 'none';
         endDatePane.style.display    = 'none';
-
         infillPane.style.display     = 'block';
+        forecastPane.style.display   = 'none';
+        document.getElementById('forecast-overlay').style.display = 'none';
 
         infoContainer.innerHTML = `
             <p>
@@ -140,9 +186,36 @@
         `;
     });
 
+    // Forecast comparison tab listener actions
+    btnForecasts.addEventListener('click', () => {
+        btnInfill.classList.remove('active');
+        btnMetrics.classList.remove('active');
+        btnForecasts.classList.add('active');
+
+        metricPane.style.display     = 'none';
+        dataTypeLabel.style.display  = 'none';
+        dataTypePane.style.display   = 'none';
+        changePane.style.display     = 'none';
+        datePane.style.display       = 'none';
+        endDatePane.style.display    = 'none';
+        infillPane.style.display     = 'none';
+        forecastPane.style.display   = 'block';
+        document.getElementById('forecast-overlay').style.display = 'none';
+
+        infoContainer.innerHTML = `
+            <p>
+                In “Zipcode Forecast Comparisons” mode pick one-month, three-month, or one-year forward forecasts. Then hover over the zipcode of interest and the plot will display a comparison of actual values agains the predicted values of RNN (blue) vs LSTM (orange). Visually speaking, the machine-learning forecast methodology with smaller error will be closer to the 45-degree line. Map tiles by OpenStreetMap.
+            </p>
+        `;
+
+        updateMap();
+    });
+
     // -------------------------------------------------------------
     // Populate Dropdowns
     // -------------------------------------------------------------
+    
+    // Zipcode-level metrics pulldown menu builder
     function populateMetrics(metrics) {
         currentMetrics = metrics;
         const sel = document.getElementById('metric');
@@ -159,14 +232,18 @@
             return g;
         };
 
+        // Separate the annual and monthly metrics
         sel.appendChild(makeGroup('Annual Metrics',   metrics.annual));
         sel.appendChild(makeGroup('Monthly Metrics',  metrics.monthly));
+
+        // Separate the custom (lot coverage) and forecast (SARIMA/LSTM) metrics
         if(metrics.custom?.length)   sel.appendChild(makeGroup('Custom Metrics',   metrics.custom));
         if(metrics.forecast?.length) sel.appendChild(makeGroup('Forecast Metrics', metrics.forecast));
 
         sel.addEventListener('change', () => handleMetricChange(sel.value));
     }
 
+    // This date dropdown needs to be dynamically updated depending on whether the data is annual or monthly
     function populateDates(el, type) {
         el.innerHTML = '<option value=""></option>';
         if(type==='annual') {
@@ -180,6 +257,7 @@
         }
     }
 
+    // This date dropdown is looking forward and therefore needs to match the dates available for the forecasts
     function populateForecastDates(el) {
         el.innerHTML = '<option value=""></option>';
         fetch('/forecast_dates')
@@ -237,16 +315,97 @@
     // -------------------------------------------------------------
     async function updateMap() {
         const spinner = document.getElementById('spinner');
+        const mapDiv = document.getElementById('map');
+
+        // (optional) tear down any old hover listener
+        if (mapDiv.removeAllListeners) {
+            mapDiv.removeAllListeners('plotly_hover');
+        }
+
         spinner.classList.add('visible');
         try {
+
+            // Forecast‐mode branch
+            if (btnForecasts.classList.contains('active')) {
+
+                // Import the zipcode shape data
+                const shapeData = await fetch('/data').then(r=>r.json());
+
+                // Build traces array (zipcode outlines)
+                const traces = [];
+                shapeData.features.forEach(f => {
+
+                    // Polygon outline builder
+                    const coords = [];
+                    (function walk(c){
+                    Array.isArray(c[0]) ? c.forEach(walk) : coords.push(c);
+                    })(f.geometry.coordinates);
+
+                    // Display dark gray zipcode lines 
+                    traces.push({
+                    type:  'scattermapbox',
+                    lat:   coords.map(c=>c[1]),
+                    lon:   coords.map(c=>c[0]),
+                    mode:  'lines',
+                    line:  { width: 2, color: '#555555' },
+                    hoverinfo: 'skip'      // Skip so hover doesn’t fire here
+                    });
+
+                    // Plot the centroid for reference and hover interaction
+                    const lat = +f.properties.INTPTLAT20;
+                    const lon = +f.properties.INTPTLON20;
+                    const zip = f.properties.GEOID20;
+
+                    traces.push({
+                    type:  'scattermapbox',
+                    lat:   [lat],
+                    lon:   [lon],
+                    mode:  'markers',
+                    marker: {
+                        size: 5,
+                        color: 'black'
+                    },
+                    customdata: [zip],
+                    hoverinfo: 'none'
+                    });
+                });
+
+                // Draw map
+                await Plotly.newPlot('map', traces, {
+                    mapbox: { style:'open-street-map', center:{lat:38.8339,lon:-104.8214}, zoom:9.5 },
+                    margin: {l:0,r:0,t:0,b:0}, showlegend:false
+                });
+
+                // Load image when centriod is hovered over
+                mapDiv.on('plotly_hover', evt => {
+                    const zip = evt.points[0].customdata;
+                    if (!zip) return;      // safety guard
+                    const horizon = document.querySelector('input[name="forecast_horizon"]:checked').value;
+                    document.getElementById('forecast-img').src = `/forecast_graph/${horizon}/${zip}`;
+                });
+
+                // Show image in floating overlay container
+                document.getElementById('forecast-overlay').style.display = 'block';
+                spinner.classList.remove('visible');
+                return;
+            }
+
+            // Infill‐mode branch
             const isInfill = btnInfill.classList.contains('active');
             if(isInfill) {
+
+                // Grab the chosen infill method (k-fold or logistic)
                 const infillType = document.querySelector('input[name="infill"]:checked').value;
+
+                // Fetch the zipcode shapes and the infill scores in parallel
                 const [shapeData, resp] = await Promise.all([
                     fetch('/data').then(r=>r.json()),
                     fetch(`/infill_scores?type=${infillType}`).then(r=>r.json())
                 ]);
+
                 const points = Array.isArray(resp)?resp:(resp.points||[]);
+
+                // Build outline traces for each zipcode
                 const zipTraces = shapeData.features.map(f=>{
                     const coords=[];
                     (function ext(c){ Array.isArray(c[0])?c.forEach(ext):coords.push(c) })(f.geometry.coordinates);
@@ -259,11 +418,15 @@
                         hoverinfo:'none'
                     };
                 });
+
+                // Parcel points need the latitude, longitude, and parcel points extracted
                 const lats = points.map(d=>d.latitude),
                       lons = points.map(d=>d.longitude),
                       vals = points.map(d=>d.score),
                       sizes= points.map(d=>d.marker_size||6),
                       maxScore = Math.max(...vals,0);
+
+                // Define the actual point for the marker trace colored by infill score
                 const parcelTrace = {
                     type:'scattermapbox',
                     lat:lats, lon:lons, mode:'markers',
@@ -274,22 +437,25 @@
                     mapbox:{ style:'open-street-map', center:{lat:38.8339,lon:-104.8214}, zoom:9.5 },
                     height:1000, margin:{l:0,r:0,t:0,b:0}, showlegend:false
                 };
+
+                // Update the existing map with the two sets of traces
                 Plotly.react('map',[...zipTraces,parcelTrace],layout);
                 return;
             }
 
-            // non-infill branch
+            // Zipcode metrics branch
             const metric = document.getElementById('metric').value;
             const isCustom   = currentMetrics.custom.includes(metric);
             const isForecast = currentMetrics.forecast.includes(metric);
 
+            // Only use end date if not forecast and in change mode
             if(isCustom && metric==='LotCoverage') {
                 const lotData = await fetch('/lot_coverage_zipcode').then(r=>r.json());
                 displayLotCoverageData(lotData);
                 return;
             }
 
-            // build update_data body
+            // Body for updating data. This is important because data can have different date ranges and different types (snapshot vs change)
             const dataType   = document.querySelector('input[name="data_type"]:checked').value;
             const changeType = document.querySelector('input[name="change_type"]:checked').value;
             const date1      = document.getElementById('date1').value;
@@ -302,14 +468,18 @@
                 end_date: date2,
                 change_type: changeType
             };
+
+            // Fetch the colored metrics for each zipcode
             const updateData = await fetch('/update_data', {
                 method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
             }).then(r=>r.json());
 
+            // Build a lookup of zipcode to metric value
             const zipCodeData = {};
             updateData.forEach(item=>{ zipCodeData[item.RegionName]=item[metric]; });
-
             const shapeData = await fetch('/data').then(r=>r.json());
+
+            // Compute min/max for color scaling
             const values    = Object.values(zipCodeData).filter(v=>v!=null&&!isNaN(v));
             const minValue = Math.min(...values), maxValue = Math.max(...values);
             const colorScale = chroma.scale(['cyan','yellow']).domain([0,1]);
@@ -323,6 +493,7 @@
                     ?'rgba(200,200,200,0.7)'
                     :colorScale((value-minValue)/(maxValue-minValue)).alpha(0.7).css();
 
+                // Polygon fill trace
                 traces.push({
                     type:'scattermapbox',
                     lat:coords.map(c=>c[1]),
@@ -334,6 +505,7 @@
                     hoverinfo:'none'
                 });
 
+                // Marker and hover-text for each
                 if(value!=null&&!isNaN(value)) {
                     const lat = +f.properties.INTPTLAT20, lon=+f.properties.INTPTLON20;
                     const txt = (dataType==='change'&&changeType==='percent')
@@ -374,24 +546,35 @@
     // Display Lot Coverage
     // -------------------------------------------------------------
     function displayLotCoverageData(data) {
+        
+        // Build a lookup from ZIP to LotCoverage value
         const zipCodeData = {};
         data.forEach(item => zipCodeData[item.ZIPCODE] = item.LotCoverage);
 
+        // Fetch the same zipcode shapes we use elsewhere
         fetch('/data')
           .then(r=>r.json())
           .then(shapeData => {
+
+            // Extract only the valid LotCoverage values for color scaling
             const values = Object.values(zipCodeData).filter(v=>v!=null&&!isNaN(v));
             const minValue = Math.min(...values), maxValue = Math.max(...values);
             const colorScale = chroma.scale(['cyan','yellow']).domain([0,1]);
             const traces = [];
 
+            // For each zipcode polygon
             shapeData.features.forEach(f=>{
+                
+                // Gather its coordinates
                 const coords=[]; (function ext(c){ Array.isArray(c[0])?c.forEach(ext):coords.push(c) })(f.geometry.coordinates);
                 const zip = f.properties.GEOID20, value = zipCodeData[zip];
+
+                // Apply fill color: gray if no data, otherwise scaled
                 const fillcolor = (value==null||isNaN(value))
                     ?'rgba(200,200,200,0.7)'
                     :colorScale((value-minValue)/(maxValue-minValue)).alpha(0.7).css();
 
+                // Send the outlines and fills to the map
                 traces.push({
                     type:'scattermapbox',
                     lat:coords.map(c=>c[1]),
@@ -403,9 +586,10 @@
                     hoverinfo:'none'
                 });
 
+                // Add hover marker and matching coverage text
                 if(value!=null&&!isNaN(value)) {
                     const lat=+f.properties.INTPTLAT20, lon=+f.properties.INTPTLON20;
-                    const txt = `${(value*100).toFixed(2)}%`;
+                    const txt = `${value}%`;
                     traces.push({
                         type:'scattermapbox',
                         lat:[lat], lon:[lon],
@@ -427,6 +611,8 @@
                 mapbox:{ style:'open-street-map', center:{lat:38.8339,lon:-104.8214}, zoom:9.5 },
                 height:1000, margin:{l:0,r:0,t:0,b:0}, showlegend:false
             };
+
+            // Final render of map with lot coverage heatmap and hover points
             Plotly.newPlot('map', traces, layout);
           })
           .catch(console.error);
@@ -443,12 +629,12 @@
         const startSelect    = document.getElementById('date1');
         const endSelect      = document.getElementById('date2');
 
-        // 1) hide all date controls until a real metric is chosen
+        // Hide all date controls until a real metric is chosen
         startDiv.style.display  = 'none';
         endDiv.style.display    = 'none';
         changeDiv.style.display = 'none';
 
-        // 2) when user toggles Change/Snapshot after picking a metric
+        // Toggle change/snapshot after picking a metric
         document
             .querySelectorAll('input[name="data_type"]')
             .forEach(radio =>
@@ -457,13 +643,13 @@
             })
             );
 
-        // 3) fetch & populate the metric dropdown
+        // Fetch and populate the metric dropdown
         fetch('/metrics')
             .then(r => r.json())
             .then(metrics => {
             populateMetrics(metrics);
 
-            // add a disabled “placeholder” option up top
+            // Add a disabled “placeholder” option up top
             const placeholder = document.createElement('option');
             placeholder.text    = '⦿ Select a metric…';
             placeholder.value   = '';
@@ -471,14 +657,14 @@
             placeholder.selected= true;
             metricSelect.prepend(placeholder);
 
-            // wire up the select handler
+            // Wire up the select handler
             metricSelect.addEventListener('change', () => {
                 handleMetricChange(metricSelect.value);
             });
             })
             .catch(console.error);
 
-        // 4) draw the initial grey ZIP outlines
+        // Draw the initial grey ZIP outlines
         fetch('/data')
             .then(r => r.json())
             .then(data => {
